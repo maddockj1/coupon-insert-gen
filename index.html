@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coupon Insert Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 24px 16px; background: #f0f2f5; color: #1a1a2e; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .subtitle { color: #666; font-size: 13px; margin: 0 0 24px; }
+
+    /* Config */
+    .config-bar { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+    .config-bar .form-group { flex: 1; min-width: 200px; }
+
+    /* Info */
+    .info { background: #e8f4fd; border-left: 4px solid #4a90e2; padding: 10px 14px; border-radius: 4px; font-size: 13px; color: #444; margin-bottom: 20px; }
+
+    /* Row card */
+    .row-card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); position: relative; }
+    .row-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .row-card-header h3 { margin: 0; font-size: 15px; color: #333; }
+
+    /* Grid */
+    .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .span2 { grid-column: span 2; }
+    .span4 { grid-column: span 4; }
+    @media (max-width: 900px) { .form-grid { grid-template-columns: repeat(2, 1fr); } .span4 { grid-column: span 2; } }
+    @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } .span2, .span4 { grid-column: span 1; } }
+
+    /* Form controls */
+    .form-group { display: flex; flex-direction: column; }
+    label { font-size: 11px; font-weight: 700; color: #555; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
+    label .req { color: #e74c3c; }
+    label .opt { color: #aaa; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 10px; }
+    input, textarea, select { padding: 7px 9px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 100%; transition: border-color .15s; font-family: inherit; background: #fafafa; }
+    input:focus, textarea:focus { outline: none; border-color: #4a90e2; background: #fff; box-shadow: 0 0 0 2px rgba(74,144,226,.12); }
+    textarea { resize: vertical; min-height: 60px; }
+    .hint { font-size: 10px; color: #aaa; margin-top: 2px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 9px 18px; border: none; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 600; transition: filter .15s, transform .1s; white-space: nowrap; }
+    .btn:active { transform: scale(.97); }
+    .btn:hover { filter: brightness(1.08); }
+    .btn-blue   { background: #4a90e2; color: #fff; }
+    .btn-green  { background: #27ae60; color: #fff; }
+    .btn-red    { background: #e74c3c; color: #fff; }
+    .btn-grey   { background: #95a5a6; color: #fff; }
+    .btn-remove { position: absolute; top: 14px; right: 14px; padding: 4px 11px; font-size: 11px; }
+
+    .action-bar { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
+
+    /* Output */
+    .output-card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .output-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .output-header h2 { margin: 0; font-size: 17px; }
+    .output-actions { display: flex; gap: 8px; align-items: center; }
+    .copy-ok { color: #27ae60; font-size: 12px; font-weight: 600; display: none; }
+
+    .sql-box { background: #1e1e2e; color: #cdd6f4; border-radius: 6px; padding: 18px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; overflow-x: auto; min-height: 80px; max-height: 520px; overflow-y: auto; }
+    .sql-box .kw   { color: #cba6f7; font-weight: bold; }
+    .sql-box .null { color: #f38ba8; }
+    .sql-box .num  { color: #fab387; }
+    .sql-box .cm   { color: #6c7086; font-style: italic; }
+    .sql-box .ph   { color: #585b70; font-style: italic; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Coupon Insert Generator</h1>
+  <p class="subtitle">Build SQL INSERT statements for the <code>coupon</code> table from coupon data</p>
+
+  <div class="info">
+    Fields marked <span style="color:#e74c3c">*</span> are required by the database schema.
+    <code>coupon_id</code> is auto-generated as a random 32-char hex. Leave <strong>End Date</strong> blank for no expiry.
+    <code>threshold</code> accepts values like <code>$19</code> or <code>19</code> — the $ is stripped automatically.
+  </div>
+
+  <div class="config-bar">
+    <div class="form-group" style="max-width:180px">
+      <label>Table Name</label>
+      <input type="text" id="cfg-table" value="coupon">
+    </div>
+  </div>
+
+  <div id="rows"></div>
+
+  <div class="action-bar">
+    <button class="btn btn-blue" onclick="addRow()">+ Add Row</button>
+    <button class="btn btn-green" onclick="generateSQL()">&#9654; Generate SQL</button>
+    <button class="btn btn-grey" onclick="clearAll()">Clear All</button>
+  </div>
+
+  <div class="output-card">
+    <div class="output-header">
+      <h2>Generated SQL</h2>
+      <div class="output-actions">
+        <span class="copy-ok" id="copy-ok">&#10003; Copied!</span>
+        <button class="btn btn-grey" onclick="copySQL()">Copy</button>
+      </div>
+    </div>
+    <div class="sql-box" id="sql-output"><span class="ph">Fill in the form above and click "Generate SQL"…</span></div>
+  </div>
+</div>
+
+<script>
+  let seq = 0;
+  const today = new Date().toISOString().slice(0, 10);
+
+  /* ── Helpers ───────────────────────────────────────────────── */
+
+  function randHex32() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function escH(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function escapeSql(s) {
+    return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  }
+
+  function sqlStr(v) {
+    if (v === null || v === undefined || String(v).trim() === '') return 'NULL';
+    return `'${escapeSql(String(v).trim())}'`;
+  }
+
+  function sqlNum(v) {
+    if (v === null || v === undefined || String(v).trim() === '') return 'NULL';
+    const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
+    return isNaN(n) ? 'NULL' : n.toFixed(2);
+  }
+
+  function toMysqlDt(dateStr) {
+    if (!dateStr) return null;
+    return `${dateStr} 00:00:00`;
+  }
+
+  /* ── Row builder ───────────────────────────────────────────── */
+
+  function addRow(data) {
+    seq++;
+    const n  = seq;
+    const id = `row-${n}`;
+    const cid = randHex32();
+    const d  = data || {};
+
+    const el = document.createElement('div');
+    el.className = 'row-card';
+    el.id = id;
+
+    el.innerHTML = `
+      <div class="row-card-header">
+        <h3>Coupon #${n}</h3>
+        <button class="btn btn-red btn-remove" onclick="removeRow('${id}')">Remove</button>
+      </div>
+      <div class="form-grid">
+
+        <div class="form-group span2">
+          <label>Raw Title <span class="req">*</span></label>
+          <input name="raw_title" type="text" placeholder="e.g. Blue Apron 35% off your first 3 orders" value="${escH(d.raw_title||'')}">
+        </div>
+        <div class="form-group span2">
+          <label>Display Title <span class="req">*</span></label>
+          <input name="display_title" type="text" placeholder="e.g. Blue Apron 35% off your first 3 orders" value="${escH(d.display_title||'')}">
+        </div>
+
+        <div class="form-group span4">
+          <label>Description <span class="req">*</span></label>
+          <textarea name="description" placeholder="Full coupon description shown to users">${escH(d.description||'')}</textarea>
+        </div>
+
+        <div class="form-group span2">
+          <label>URL <span class="req">*</span></label>
+          <input name="url" type="url" placeholder="https://www.example.com/" value="${escH(d.url||'')}">
+        </div>
+        <div class="form-group">
+          <label>Promo Code <span class="opt">(optional)</span></label>
+          <input name="promocode" type="text" placeholder="e.g. SAVE25" value="${escH(d.promocode||'')}">
+        </div>
+        <div class="form-group">
+          <label>Savings <span class="opt">(optional)</span></label>
+          <input name="savings" type="text" placeholder="e.g. 35% or $2" value="${escH(d.savings||'')}">
+        </div>
+
+        <div class="form-group">
+          <label>Start Date <span class="req">*</span></label>
+          <input name="start_date" type="date" value="${d.start_date||today}">
+        </div>
+        <div class="form-group">
+          <label>End Date <span class="opt">(optional)</span></label>
+          <input name="end_date" type="date" value="${d.end_date||''}">
+          <span class="hint">Leave blank for no expiry</span>
+        </div>
+        <div class="form-group">
+          <label>Merchant ID <span class="req">*</span></label>
+          <input name="merchant_id" type="number" placeholder="e.g. 235113" value="${escH(d.merchant_id||'')}">
+        </div>
+        <div class="form-group">
+          <label>Domain ID <span class="req">*</span></label>
+          <input name="domain_id" type="number" placeholder="e.g. 28177933" value="${escH(d.domain_id||'')}">
+        </div>
+
+        <div class="form-group">
+          <label>Threshold <span class="opt">(optional)</span></label>
+          <input name="threshold" type="text" placeholder="e.g. 19 or $19" value="${escH(d.threshold||'')}">
+          <span class="hint">Min order amount — $ stripped automatically</span>
+        </div>
+        <div class="form-group span2">
+          <label>Restrictions <span class="opt">(optional)</span></label>
+          <input name="restrictions" type="text" placeholder="e.g. One use per customer" value="${escH(d.restrictions||'')}">
+        </div>
+        <div class="form-group">
+          <label>Create Date</label>
+          <input name="create_date" type="date" value="${d.create_date||today}">
+          <span class="hint">Defaults to today</span>
+        </div>
+
+        <div class="form-group span2">
+          <label>Coupon ID <span class="opt">(auto-generated)</span></label>
+          <input name="coupon_id" type="text" maxlength="32" placeholder="Auto-generated 32-char hex" value="${escH(d.coupon_id||cid)}">
+          <span class="hint">32-char hex — regenerated fresh each page load</span>
+        </div>
+
+      </div>`;
+
+    document.getElementById('rows').appendChild(el);
+  }
+
+  function removeRow(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  }
+
+  function clearAll() {
+    if (!confirm('Remove all rows and clear output?')) return;
+    document.getElementById('rows').innerHTML = '';
+    resetOutput();
+    seq = 0;
+  }
+
+  function resetOutput() {
+    document.getElementById('sql-output').innerHTML = '<span class="ph">Fill in the form above and click "Generate SQL"…</span>';
+    delete document.getElementById('sql-output').dataset.plain;
+  }
+
+  /* ── SQL generation ────────────────────────────────────────── */
+
+  const COLS = [
+    'coupon_id','raw_title','display_title','description','promocode',
+    'url','start_date','end_date','merchant_id','domain_id',
+    'savings','threshold','restrictions','coupon_source','active','create_date'
+  ];
+
+  function rowData(card) {
+    const out = {};
+    card.querySelectorAll('input,textarea').forEach(el => { out[el.name] = el.value; });
+    return out;
+  }
+
+  function buildStatement(d, tableName, idx) {
+    const vals = [
+      sqlStr(d.coupon_id || randHex32()),
+      sqlStr(d.raw_title),
+      sqlStr(d.display_title),
+      sqlStr(d.description),
+      sqlStr(d.promocode),
+      sqlStr(d.url),
+      sqlStr(toMysqlDt(d.start_date)),
+      sqlStr(toMysqlDt(d.end_date)),
+      d.merchant_id ? parseInt(d.merchant_id, 10) : 'NULL',
+      d.domain_id   ? parseInt(d.domain_id,   10) : 'NULL',
+      sqlStr(d.savings),
+      sqlNum(d.threshold),
+      sqlStr(d.restrictions),
+      "'UNKNOWN'",
+      '1',
+      sqlStr(toMysqlDt(d.create_date))
+    ];
+
+    const colList = COLS.map(c => `\`${c}\``).join(', ');
+    const valList = vals.join(', ');
+    const label   = d.raw_title ? d.raw_title.slice(0, 60) : 'Unnamed';
+    return `-- Row ${idx + 1}: ${label}\nINSERT INTO \`${tableName}\` (${colList})\nVALUES (${valList});`;
+  }
+
+  function generateSQL() {
+    const cards = document.querySelectorAll('.row-card');
+    if (!cards.length) { alert('Add at least one row first.'); return; }
+
+    const table = (document.getElementById('cfg-table').value || 'coupon').trim();
+    const stmts = [];
+    const errors = [];
+
+    cards.forEach((card, i) => {
+      const d = rowData(card);
+      const missing = [];
+      if (!d.raw_title?.trim())    missing.push('Raw Title');
+      if (!d.display_title?.trim()) missing.push('Display Title');
+      if (!d.description?.trim())  missing.push('Description');
+      if (!d.url?.trim())          missing.push('URL');
+      if (!d.start_date?.trim())   missing.push('Start Date');
+      if (!d.merchant_id?.trim())  missing.push('Merchant ID');
+      if (!d.domain_id?.trim())    missing.push('Domain ID');
+      if (missing.length) { errors.push(`Row ${i+1}: missing ${missing.join(', ')}`); return; }
+      stmts.push(buildStatement(d, table, i));
+    });
+
+    if (errors.length) {
+      alert('Validation errors:\n\n' + errors.join('\n'));
+      return;
+    }
+
+    const plain = stmts.join('\n\n');
+    document.getElementById('sql-output').innerHTML = highlight(plain);
+    document.getElementById('sql-output').dataset.plain = plain;
+  }
+
+  /* ── Syntax highlight (keywords + NULLs + numbers only — safe) */
+
+  function highlight(sql) {
+    return escH(sql)
+      .replace(/\b(INSERT INTO|INSERT|INTO|VALUES)\b/g, '<span class="kw">$1</span>')
+      .replace(/\bNULL\b/g, '<span class="null">NULL</span>')
+      .replace(/^(-- .+)$/gm, '<span class="cm">$1</span>');
+  }
+
+  /* ── Copy & Email ──────────────────────────────────────────── */
+
+  function getPlain() {
+    return document.getElementById('sql-output').dataset.plain || '';
+  }
+
+  function copySQL() {
+    const text = getPlain();
+    if (!text) { alert('Generate SQL first.'); return; }
+    navigator.clipboard.writeText(text).then(() => {
+      const el = document.getElementById('copy-ok');
+      el.style.display = 'inline';
+      setTimeout(() => el.style.display = 'none', 2200);
+    }).catch(() => alert('Copy failed — please select and copy the text manually.'));
+  }
+
+  /* ── Init ──────────────────────────────────────────────────── */
+  addRow();
+</script>
+</body>
+</html>
