@@ -48,6 +48,7 @@
     .btn-green  { background: #27ae60; color: #fff; }
     .btn-red    { background: #e74c3c; color: #fff; }
     .btn-grey   { background: #95a5a6; color: #fff; }
+    .btn-purple { background: #8e44ad; color: #fff; }
     .btn-remove { position: absolute; top: 14px; right: 14px; padding: 4px 11px; font-size: 11px; }
 
     .action-bar { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
@@ -65,6 +66,39 @@
     .sql-box .num  { color: #fab387; }
     .sql-box .cm   { color: #6c7086; font-style: italic; }
     .sql-box .ph   { color: #585b70; font-style: italic; }
+
+    /* CSV hint */
+    .csv-hint { font-size: 11px; color: #8e44ad; font-weight: 600; margin-top: 6px; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+    .modal { background: #fff; border-radius: 10px; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,.25); }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid #eee; }
+    .modal-header h3 { margin: 0 0 6px; font-size: 17px; color: #1a1a2e; }
+    .modal-header p { margin: 0; font-size: 13px; color: #666; }
+    .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; }
+
+    .missing-section { margin-bottom: 22px; }
+    .missing-section:last-child { margin-bottom: 0; }
+    .missing-section-title { font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .missing-section-title .req { color: #e74c3c; }
+    .missing-badge { background: #fef3cd; color: #856404; border-radius: 20px; padding: 2px 8px; font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+    .missing-global input, .missing-global textarea { border: 1px solid #ddd; border-radius: 4px; padding: 7px 9px; font-size: 13px; width: 100%; font-family: inherit; background: #fafafa; }
+    .missing-global textarea { min-height: 60px; resize: vertical; }
+    .missing-global input:focus, .missing-global textarea:focus { outline: none; border-color: #4a90e2; background: #fff; box-shadow: 0 0 0 2px rgba(74,144,226,.12); }
+    .missing-global input.error, .missing-global textarea.error { border-color: #e74c3c; box-shadow: 0 0 0 2px rgba(231,76,60,.12); }
+
+    .missing-rows-table { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
+    .missing-row-item { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #f5f5f5; }
+    .missing-row-item:last-child { border-bottom: none; }
+    .missing-row-item:nth-child(even) { background: #fafafa; }
+    .missing-row-label { font-size: 11px; color: #777; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .missing-row-label span { display: block; font-size: 10px; font-weight: 400; color: #aaa; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .missing-row-input input, .missing-row-input textarea { border: 1px solid #ddd; border-radius: 4px; padding: 5px 8px; font-size: 12px; width: 100%; font-family: inherit; background: #fafafa; }
+    .missing-row-input textarea { min-height: 44px; resize: vertical; }
+    .missing-row-input input:focus, .missing-row-input textarea:focus { outline: none; border-color: #4a90e2; background: #fff; }
+    .missing-row-input input.error, .missing-row-input textarea.error { border-color: #e74c3c; }
   </style>
 </head>
 <body>
@@ -93,7 +127,12 @@
   <div class="action-bar">
     <button class="btn btn-blue" onclick="addRow()">+ Add Row</button>
     <button class="btn btn-green" onclick="generateSQL()">&#9654; Generate SQL</button>
+    <button id="csv-btn" class="btn btn-purple" onclick="document.getElementById('csv-file-input').click()">&#8593; Upload CSV</button>
     <button class="btn btn-grey" onclick="clearAll()">Clear All</button>
+    <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none" onchange="handleCSVUpload(this)">
+  </div>
+  <div id="csv-hint" class="csv-hint" style="display:none">
+    CSV columns are matched by name. Accepted headers: raw_title, display_title, description, url, promocode, savings, start_date, end_date, merchant_id, domain_id, threshold, restrictions, create_date, coupon_id
   </div>
 
   <div class="output-card">
@@ -108,9 +147,25 @@
   </div>
 </div>
 
+<!-- Missing fields modal -->
+<div id="csv-modal" class="modal-overlay" style="display:none" onclick="modalOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Complete Missing Required Fields</h3>
+      <p id="modal-subtitle"></p>
+    </div>
+    <div id="modal-body" class="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-grey" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-green" onclick="applyAndGenerate()">Apply &amp; Generate SQL</button>
+    </div>
+  </div>
+</div>
+
 <script>
   let seq = 0;
   const today = new Date().toISOString().slice(0, 10);
+  let pendingCsvRows = null;
 
   /* ── Helpers ───────────────────────────────────────────────── */
 
@@ -178,6 +233,9 @@
     resetOutput();
     seq = 0;
     document.getElementById('info-bar').innerHTML = INFO[currentTable()];
+    const isCoupon = currentTable() === 'coupon';
+    document.getElementById('csv-btn').style.display  = isCoupon ? '' : 'none';
+    document.getElementById('csv-hint').style.display = isCoupon ? '' : 'none';
     addRow();
   }
 
@@ -238,11 +296,11 @@
 
         <div class="form-group">
           <label>Start Date <span class="req">*</span></label>
-          <input name="start_date" type="date" value="${d.start_date||today}">
+          <input name="start_date" type="date" value="${escH(d.start_date||today)}">
         </div>
         <div class="form-group">
           <label>End Date <span class="opt">(optional)</span></label>
-          <input name="end_date" type="date" value="${d.end_date||''}">
+          <input name="end_date" type="date" value="${escH(d.end_date||'')}">
           <span class="hint">Leave blank for no expiry</span>
         </div>
         <div class="form-group">
@@ -265,7 +323,7 @@
         </div>
         <div class="form-group">
           <label>Create Date</label>
-          <input name="create_date" type="date" value="${d.create_date||today}">
+          <input name="create_date" type="date" value="${escH(d.create_date||today)}">
           <span class="hint">Defaults to today</span>
         </div>
 
@@ -459,7 +517,287 @@
     }).catch(() => alert('Copy failed — please select and copy the text manually.'));
   }
 
+  /* ── CSV Upload ────────────────────────────────────────────── */
+
+  const HEADER_MAP = {
+    'raw_title': 'raw_title', 'raw title': 'raw_title', 'rawtitle': 'raw_title', 'title': 'raw_title',
+    'display_title': 'display_title', 'display title': 'display_title', 'displaytitle': 'display_title',
+    'description': 'description', 'desc': 'description',
+    'url': 'url', 'link': 'url', 'href': 'url',
+    'promo_code': 'promocode', 'promocode': 'promocode', 'promo code': 'promocode', 'promo': 'promocode', 'code': 'promocode', 'coupon_code': 'promocode',
+    'savings': 'savings', 'saving': 'savings', 'discount': 'savings', 'offer': 'savings',
+    'start_date': 'start_date', 'start date': 'start_date', 'startdate': 'start_date', 'start': 'start_date',
+    'end_date': 'end_date', 'end date': 'end_date', 'enddate': 'end_date', 'end': 'end_date',
+    'expiry': 'end_date', 'expiration': 'end_date', 'expiration_date': 'end_date', 'expiry_date': 'end_date', 'expires': 'end_date',
+    'merchant_id': 'merchant_id', 'merchant id': 'merchant_id', 'merchantid': 'merchant_id',
+    'domain_id': 'domain_id', 'domain id': 'domain_id', 'domainid': 'domain_id',
+    'threshold': 'threshold', 'minimum': 'threshold', 'min_order': 'threshold', 'min order': 'threshold',
+    'restrictions': 'restrictions', 'restriction': 'restrictions', 'terms': 'restrictions',
+    'create_date': 'create_date', 'create date': 'create_date', 'created': 'create_date', 'createdate': 'create_date', 'created_date': 'create_date',
+    'coupon_id': 'coupon_id', 'coupon id': 'coupon_id', 'couponid': 'coupon_id',
+  };
+
+  const COUPON_REQUIRED = ['raw_title', 'display_title', 'description', 'url', 'start_date', 'merchant_id', 'domain_id'];
+
+  const FIELD_LABEL = {
+    raw_title: 'Raw Title', display_title: 'Display Title', description: 'Description',
+    url: 'URL', start_date: 'Start Date', merchant_id: 'Merchant ID', domain_id: 'Domain ID',
+  };
+
+  const FIELD_INPUT = {
+    raw_title:     { tag: 'input',    type: 'text',   placeholder: 'e.g. Blue Apron 35% off your first 3 orders' },
+    display_title: { tag: 'input',    type: 'text',   placeholder: 'e.g. Blue Apron 35% off your first 3 orders' },
+    description:   { tag: 'textarea', type: '',       placeholder: 'Full coupon description shown to users' },
+    url:           { tag: 'input',    type: 'url',    placeholder: 'https://www.example.com/' },
+    start_date:    { tag: 'input',    type: 'date',   placeholder: '' },
+    merchant_id:   { tag: 'input',    type: 'number', placeholder: 'e.g. 235113' },
+    domain_id:     { tag: 'input',    type: 'number', placeholder: 'e.g. 28177933' },
+  };
+
+  function normalizeHeader(h) {
+    return HEADER_MAP[h.toLowerCase().trim()] || null;
+  }
+
+  function normalizeDate(v) {
+    if (!v) return '';
+    v = v.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    const m1 = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m1) return `${m1[3]}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`;
+    const m2 = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+    return v;
+  }
+
+  function parseCSV(text) {
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const rows = [];
+    let current = [], field = '', inQuotes = false, i = 0;
+
+    while (i < text.length) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"' && text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        else if (ch === '"') { inQuotes = false; }
+        else { field += ch; }
+      } else {
+        if (ch === '"') { inQuotes = true; }
+        else if (ch === ',') { current.push(field); field = ''; }
+        else if (ch === '\n') {
+          current.push(field); field = '';
+          if (current.some(f => f.trim() !== '')) rows.push(current);
+          current = []; i++; continue;
+        } else { field += ch; }
+      }
+      i++;
+    }
+    current.push(field);
+    if (current.some(f => f.trim() !== '')) rows.push(current);
+
+    if (rows.length < 2) return null;
+
+    const headers = rows[0].map(h => ({ original: h.trim(), normalized: normalizeHeader(h.trim()) }));
+    const unknownHeaders = headers.filter(h => h.original && !h.normalized).map(h => h.original);
+
+    const dateFields = new Set(['start_date', 'end_date', 'create_date']);
+
+    const data = rows.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((h, idx) => {
+        if (h.normalized) {
+          let val = (row[idx] || '').trim();
+          if (dateFields.has(h.normalized)) val = normalizeDate(val);
+          obj[h.normalized] = val;
+        }
+      });
+      return obj;
+    });
+
+    return { data, unknownHeaders };
+  }
+
+  function detectMissingFields(rows) {
+    const missing = {};
+    COUPON_REQUIRED.forEach(field => {
+      const missingIdxs = rows.reduce((acc, row, i) => {
+        if (!row[field] || !row[field].trim()) acc.push(i);
+        return acc;
+      }, []);
+      if (missingIdxs.length) missing[field] = missingIdxs;
+    });
+    return missing;
+  }
+
+  function buildMissingInput(cfg, fieldName, extra) {
+    const attrs = `data-field="${fieldName}" ${extra} class="missing-input" placeholder="${escH(cfg.placeholder)}"`;
+    if (cfg.tag === 'textarea') return `<textarea ${attrs}></textarea>`;
+    return `<input type="${cfg.type}" ${attrs}>`;
+  }
+
+  function showMissingFieldsModal(rows, missing) {
+    const totalRows = rows.length;
+    const fieldCount = Object.keys(missing).length;
+    document.getElementById('modal-subtitle').textContent =
+      `${fieldCount} required field${fieldCount > 1 ? 's are' : ' is'} missing across ${totalRows} row${totalRows > 1 ? 's' : ''}. Fill them in to generate the SQL.`;
+
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '';
+
+    Object.entries(missing).forEach(([field, missingIdxs]) => {
+      const cfg = FIELD_INPUT[field];
+      const label = FIELD_LABEL[field];
+      const allMissing = missingIdxs.length === totalRows;
+
+      const section = document.createElement('div');
+      section.className = 'missing-section';
+
+      if (allMissing) {
+        const badgeText = totalRows === 1 ? 'all rows' : `all ${totalRows} rows`;
+        section.innerHTML = `
+          <div class="missing-section-title">
+            ${escH(label)} <span class="req">*</span>
+            <span class="missing-badge">applies to ${escH(badgeText)}</span>
+          </div>
+          <div class="missing-global">
+            ${buildMissingInput(cfg, field, 'data-all="true"')}
+          </div>`;
+      } else {
+        const rowItems = missingIdxs.map(idx => {
+          const preview = rows[idx].raw_title ? rows[idx].raw_title.slice(0, 40) : '';
+          return `
+            <div class="missing-row-item">
+              <div class="missing-row-label">
+                Row ${idx + 1}
+                ${preview ? `<span>${escH(preview)}</span>` : ''}
+              </div>
+              <div class="missing-row-input">
+                ${buildMissingInput(cfg, field, `data-row="${idx}"`)}
+              </div>
+            </div>`;
+        }).join('');
+
+        section.innerHTML = `
+          <div class="missing-section-title">
+            ${escH(label)} <span class="req">*</span>
+            <span class="missing-badge">missing from ${missingIdxs.length} of ${totalRows} rows</span>
+          </div>
+          <div class="missing-rows-table">${rowItems}</div>`;
+      }
+
+      body.appendChild(section);
+    });
+
+    document.getElementById('csv-modal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('csv-modal').style.display = 'none';
+    pendingCsvRows = null;
+    document.getElementById('csv-file-input').value = '';
+  }
+
+  function modalOverlayClick(e) {
+    if (e.target === document.getElementById('csv-modal')) closeModal();
+  }
+
+  function applyAndGenerate() {
+    if (!pendingCsvRows) return;
+
+    const inputs = document.querySelectorAll('.missing-input');
+    let hasErrors = false;
+
+    inputs.forEach(el => {
+      el.classList.remove('error');
+      if (!el.value.trim()) { el.classList.add('error'); hasErrors = true; }
+    });
+
+    if (hasErrors) {
+      document.getElementById('modal-body').scrollTop = 0;
+      return;
+    }
+
+    inputs.forEach(el => {
+      const field = el.dataset.field;
+      const val = el.value.trim();
+      if (el.dataset.all === 'true') {
+        pendingCsvRows.forEach(row => { if (!row[field] || !row[field].trim()) row[field] = val; });
+      } else {
+        const idx = parseInt(el.dataset.row, 10);
+        pendingCsvRows[idx][field] = val;
+      }
+    });
+
+    document.getElementById('csv-modal').style.display = 'none';
+    loadRowsAndGenerate(pendingCsvRows);
+    pendingCsvRows = null;
+    document.getElementById('csv-file-input').value = '';
+  }
+
+  function loadRowsAndGenerate(rows) {
+    document.getElementById('rows').innerHTML = '';
+    seq = 0;
+    rows.forEach(d => addCouponRow(d));
+
+    const table = currentTable();
+    const stmts = [];
+    document.querySelectorAll('.row-card').forEach((card, i) => {
+      stmts.push(buildCouponStatement(rowData(card), table, i));
+    });
+
+    const plain = stmts.join('\n\n');
+    document.getElementById('sql-output').innerHTML = highlight(plain);
+    document.getElementById('sql-output').dataset.plain = plain;
+    document.getElementById('sql-output').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function handleCSVUpload(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      const result = parseCSV(e.target.result);
+
+      if (!result) {
+        alert('Could not parse CSV. Make sure the file has a header row and at least one data row.');
+        input.value = '';
+        return;
+      }
+
+      const { data: rows, unknownHeaders } = result;
+
+      if (!rows.length) {
+        alert('No data rows found in the CSV.');
+        input.value = '';
+        return;
+      }
+
+      if (unknownHeaders.length) {
+        const msg = `These column headers were not recognized and will be ignored:\n  ${unknownHeaders.join(', ')}\n\nProceed anyway?`;
+        if (!confirm(msg)) { input.value = ''; return; }
+      }
+
+      const missing = detectMissingFields(rows);
+
+      if (Object.keys(missing).length) {
+        pendingCsvRows = rows;
+        showMissingFieldsModal(rows, missing);
+      } else {
+        loadRowsAndGenerate(rows);
+        input.value = '';
+      }
+    };
+
+    reader.onerror = () => {
+      alert('Failed to read the file. Please try again.');
+      input.value = '';
+    };
+
+    reader.readAsText(file);
+  }
+
   /* ── Init ──────────────────────────────────────────────────── */
+  document.getElementById('csv-hint').style.display = '';
   addRow();
 </script>
 </body>
